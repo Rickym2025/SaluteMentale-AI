@@ -141,7 +141,7 @@ def main():
     # --- LINK MODULO GOOGLE CONFERMATO ---
     google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLScayUn2nEf1WYYEuyzEvxOb5zBvYDKW7G-zqakqHn4kzxza2A/viewform?usp=header"
     # --- EMAIL DI CONTATTO (SOSTITUISCI!) ---
-    contact_email = "skavtech.in@gmail.com" # <-- CAMBIA QUESTA EMAIL!
+    contact_email = "smartai.riccardo@gmail.com" # <-- CAMBIA QUESTA EMAIL!
     # --- LINK APP ESTERNE ---
     radiografie_url = "https://assistente-ai-per-radiografie.streamlit.app/"
     sangue_url = "https://valutazione-preliminare-del-test-del-sangue.streamlit.app/"
@@ -392,7 +392,7 @@ def main():
 
     # --- Footer Finale (Caption) ---
     st.markdown("---")
-    st.caption("Applicazione sviluppata con Streamlit e Google Gemini. Ricorda: consulta sempre un medico o professionista qualificato.")
+    st.caption("Applicazione sviluppata con Streamlit e Google Gemini. Powered by Smart AI, CEO Modena Riccardo. Ricorda: consulta sempre un medico o professionista qualificato.")
 
 # --- Chiamata finale ---
 if __name__ == "__main__":
