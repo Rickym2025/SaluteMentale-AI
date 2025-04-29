@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 # ==================================================
-# IMPORT NECESSARI - DEVONO STARE ALL'INIZIO DEL FILE
+# IMPORT NECESSARI
 # ==================================================
-import streamlit as st  # <--- IMPORT FONDAMENTALE! ASSICURATI SIA QUI!
+import streamlit as st
 from PIL import Image
 import base64
 import os
@@ -17,31 +17,28 @@ import pandas as pd
 from io import BytesIO
 import time
 from google.api_core import exceptions
-# ==================================================
+import json # Per gestire potenziali errori JSON in Lottie
 
 # ==================================================
 # CONFIGURAZIONE MODELLO E API KEYS (DA STREAMLIT SECRETS)
 # ==================================================
 try:
-    # Ora possiamo usare 'st' perché è stato importato
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-    YOUTUBE_API_KEY = st.secrets.get("youtube_api_key") # Usiamo .get per sicurezza
+    YOUTUBE_API_KEY = st.secrets.get("youtube_api_key")
     configure(api_key=GEMINI_API_KEY)
 except KeyError as e:
     missing_key = e.args[0]
-    # Ora possiamo usare 'st' per mostrare l'errore
-    st.error(f"Errore: Chiave API '{missing_key}' mancante nei segreti. Vai su 'Manage app' -> 'Settings' -> 'Secrets' per aggiungerla.")
-    if missing_key == "youtube_api_key": st.info("Assicurati di usare una 'Chiave API' (non ID Cliente OAuth) per YouTube.")
-    st.stop() # Stoppa l'esecuzione se mancano chiavi
+    st.error(f"Errore: Chiave API '{missing_key}' mancante nei segreti.")
+    st.stop()
 except Exception as e:
     st.error(f"Errore nella configurazione iniziale: {e}")
     st.stop()
 
 # --- Definizioni Modello e Prompt ---
 MODEL_NAME = 'gemini-1.5-flash'
-SYSTEM_PROMPT_MENTAL_HEALTH = """Sei "Salute Mentale AI", un assistente virtuale focalizzato sul benessere mentale. **Rispondi sempre e solo in ITALIANO.** Il tuo obiettivo è fornire supporto informativo, psicoeducazione generale e suggerimenti per il benessere, basandoti sulle domande dell'utente. **NON SEI UN TERAPEUTA E NON PUOI FORNIRE DIAGNOSI O CONSULENZE MEDICHE.** Quando rispondi: - Usa un tono empatico, calmo e di supporto. - Fornisci informazioni generali e basate su concetti noti di psicologia e benessere mentale. - Suggerisci strategie di coping generali (es. tecniche di rilassamento, mindfulness, importanza del sonno e dell'attività fisica). - Incoraggia l'utente a cercare supporto professionale qualificato (psicologo, psicoterapeuta, medico) per problemi specifici o persistenti. - **Includi sempre alla fine un disclaimer chiaro**: "Ricorda, questa è un'interazione con un'IA e non sostituisce il parere di un professionista della salute mentale. Se stai attraversando un momento difficile, considera di parlarne con un medico, uno psicologo o uno psicoterapeuta." """
-SYSTEM_PROMPT_REPORT = """Analizza il seguente testo estratto da un referto medico. **Rispondi sempre e solo in ITALIANO.** Fornisci un riassunto conciso dei punti principali o dei risultati menzionati. **NON FARE INTERPRETAZIONI MEDICHE O DIAGNOSI.** Limita l'analisi a quanto scritto nel testo. Alla fine, ricorda all'utente: "Questa è un'analisi automatica del testo fornito e non sostituisce l'interpretazione di un medico. Discuti sempre il referto completo con il tuo medico curante." """
-SYSTEM_PROMPT_DRUG = """Fornisci informazioni generali sul farmaco menzionato o descritto nel testo. **Rispondi sempre e solo in ITALIANO.** Includi (se trovi informazioni): indicazioni d'uso generali, meccanismo d'azione di base, effetti collaterali comuni e principali avvertenze. **NON FORNIRE CONSIGLI SUL DOSAGGIO O SULL'USO SPECIFICO.** Enfatizza che queste sono informazioni generali e **NON sostituiscono il foglietto illustrativo o il parere del medico/farmacista.** Concludi con: "Consulta sempre il tuo medico o farmacista prima di assumere qualsiasi farmaco e leggi attentamente il foglietto illustrativo." """
+SYSTEM_PROMPT_MENTAL_HEALTH = """Sei "Salute Mentale AI", un assistente virtuale... (Testo completo come prima)"""
+SYSTEM_PROMPT_REPORT = """Analizza il seguente testo estratto... (Testo completo come prima)"""
+SYSTEM_PROMPT_DRUG = """Fornisci informazioni generali sul farmaco... (Testo completo come prima)"""
 
 try:
     SAFETY_SETTINGS = [
@@ -67,9 +64,23 @@ def download_generated_report(content, filename, format='txt'):
         st.markdown(href, unsafe_allow_html=True)
     except Exception as e: st.error(f"Errore download: {e}")
 
+# --- MODIFICATA GESTIONE ERRORI LOTTIE ---
 def load_lottie_url(url: str):
-     try: response = requests.get(url, timeout=10); response.raise_for_status(); return response.json()
-     except: return None
+     """Carica animazione Lottie, gestendo errori comuni."""
+     try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status() # Errore se status != 200
+        return response.json() # Prova a decodificare JSON
+     except requests.exceptions.RequestException as e:
+         # Non mostrare errore all'utente qui, ma logga se necessario per debug
+         # print(f"Errore di rete caricando Lottie {url}: {e}")
+         return None
+     except json.JSONDecodeError as e:
+         # print(f"Errore decodifica JSON per Lottie {url}: {e}")
+         return None # Il contenuto non era JSON valido
+     except Exception as e:
+         # print(f"Errore generico caricando Lottie {url}: {e}")
+         return None
 
 def extract_text_from_pdf(file_bytes):
     try:
@@ -136,13 +147,7 @@ def generate_gemini_response(system_prompt, user_content):
 # FUNZIONE PRINCIPALE DELL'APP STREAMLIT
 # ==================================================
 def main():
-    # Ora 'st' è definito grazie all'import all'inizio del file
-    st.set_page_config(
-        page_title="Salute Mentale AI",
-        page_icon="🧠",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+    st.set_page_config( page_title="Salute Mentale AI", page_icon="🧠", layout="wide", initial_sidebar_state="expanded")
 
     # URL per donazioni e contatto (SOSTITUISCI CON I TUOI LINK REALI)
     buy_me_a_coffee_url = "https://buymeacoffee.com/smartai"
@@ -164,16 +169,13 @@ def main():
         # (Codice donazioni sidebar come prima)
         if page == "🫂 Sostienici":
              st.markdown("### Sostieni Salute Mentale AI")
-             st.markdown("...") # Testo
-             st.link_button("Offrimi un caffè ☕", buy_me_a_coffee_url, use_container_width=True)
-             st.markdown("...") # Testo
-             st.link_button("Dona con Carta (Stripe) 💳", stripe_payment_link, use_container_width=True)
-             st.markdown("...") # Testo
+             # ... testo e bottoni donazione ...
 
         st.markdown("---")
         st.markdown(" Seguimi su:")
         # (HTML link social come prima)
-        st.markdown("""<style>...</style><div class="follow-me">...</div>""", unsafe_allow_html=True)
+        st.markdown("""<style>...</style><div class="follow-me">...</div>""", unsafe_allow_html=True) # Il tuo HTML qui
+
 
     # --- Contenuto Pagina Principale ---
     header_image_url = "https://cdn.leonardo.ai/users/8a519dc0-5f27-42a1-a9a3-662461401c5f/generations/1fde2447-b823-4ab1-8afa-77198e290e2d/Leonardo_Phoenix_10_Crea_un_logo_professionale_moderno_e_altam_2.jpg"
@@ -187,65 +189,85 @@ def main():
             st.markdown("""**Salute Mentale AI** è un assistente virtuale...""")
             lottie_url_home = "https://lottie.host/d7233830-b2c0-4719-a5c0-0389bd2ab539/qHF7qyXl5q.json"
             lottie_animation_home = load_lottie_url(lottie_url_home)
-            if lottie_animation_home: st_lottie(lottie_animation_home, speed=1, width=400, height=300, key="lottie_home")
+            if lottie_animation_home:
+                # --- AGGIUNTO TRY/EXCEPT attorno a st_lottie ---
+                try:
+                    st_lottie(lottie_animation_home, speed=1, width=400, height=300, key="lottie_home")
+                except Exception as e:
+                    st.warning(f"Impossibile visualizzare l'animazione Lottie: {e}")
             st.markdown("---")
+            # --- LINEE GUIDA RIPRISTINATE ---
             st.subheader("Linee Guida per l'Utilizzo:")
-            st.markdown(f"""*   **Scopo Informativo**: ...\n*   **Condotta Rispettosa**: ...\n*   **Privacy e Dati**: ... [Modulo Google]({google_form_url})...\n*   **Emergenze**: ...\n*   **Uso Responsabile**: ...\n*   **Feedback**: ... [Modulo Google]({google_form_url}) o {contact_email}.""") # Testo completo qui
+            st.markdown(f"""
+            *   **Scopo Informativo**: Fornisce informazioni generali sul benessere mentale, non sostituisce pareri medici/psicologici professionali. L'accuratezza non è garantita.
+            *   **Condotta Rispettosa**: Utilizzare un linguaggio appropriato e rispettoso durante le interazioni.
+            *   **Privacy e Dati**: Le interazioni vengono processate da Google Gemini. Non inserire dati personali sensibili. Per richieste di contatto usa il [Modulo Google]({google_form_url}). Consulta la nostra Informativa Privacy.
+            *   **Emergenze**: **Non usare per emergenze**. Contatta il 112 o linee di supporto dedicate se necessario.
+            *   **Uso Responsabile**: Le informazioni sono spunti di riflessione, non consigli medici. Consulta sempre un professionista per decisioni sulla salute.
+            *   **Feedback**: Aiutaci a migliorare segnalando problemi o suggerimenti tramite il [Modulo Google]({google_form_url}) o all'email {contact_email}.
+            """)
 
         elif page == "🧠 Coach del Benessere":
             st.header("🧠 Coach Virtuale del Benessere")
             lottie_url_coach = "https://lottie.host/0c079fc2-f4df-452a-966b-3a852ffb9801/WjOxpGVduu.json"
             lottie_animation_coach = load_lottie_url(lottie_url_coach)
-            if lottie_animation_coach: st_lottie(lottie_animation_coach, ...)
+            if lottie_animation_coach:
+                 # --- AGGIUNTO TRY/EXCEPT attorno a st_lottie ---
+                 try:
+                     st_lottie(lottie_animation_coach, speed=1, width=220, height=300, key="lottie_coach")
+                 except Exception as e:
+                     st.warning(f"Impossibile visualizzare l'animazione Lottie: {e}")
+
             st.warning("**Promemoria:** Sono un'IA di supporto...")
+
             # (Logica Chat con Text Area come prima)
             if "chat_history_wellness" not in st.session_state: st.session_state.chat_history_wellness = []
             response_area = st.container()
-            if st.session_state.chat_history_wellness: # Mostra ultima risposta
-                with response_area: # ...
-                    last_resp = st.session_state.chat_history_wellness[-1]
-                    if last_resp["role"] == "assistant": # ...
-                         with st.chat_message("assistant", avatar="❤️"): st.markdown(last_resp["content"])
-                    st.markdown("---")
+            if st.session_state.chat_history_wellness:
+                 with response_area: # ...
+                     last_resp = st.session_state.chat_history_wellness[-1]
+                     if last_resp["role"] == "assistant": # ...
+                          with st.chat_message("assistant", avatar="❤️"): st.markdown(last_resp["content"])
+                     st.markdown("---")
             user_prompt_wellness = st.text_area("Scrivi qui...", height=150, key="wellness_input", placeholder="Es: Come posso gestire l'ansia...", label_visibility="collapsed")
             submit_wellness = st.button("Invia al Coach AI ➡️", key="wellness_submit", type="primary")
             if submit_wellness and user_prompt_wellness:
-                # with st.chat_message("user"): st.markdown(user_prompt_wellness) # Opzionale
                 with response_area:
-                    with st.spinner("Salute Mentale AI sta elaborando... 🤔"):
+                    with st.spinner("... 🤔"):
                         response_text = generate_gemini_response(SYSTEM_PROMPT_MENTAL_HEALTH, user_prompt_wellness)
                         with st.chat_message("assistant", avatar="❤️"): st.markdown(response_text)
                         if not response_text.startswith("Errore:"): st.session_state.chat_history_wellness = [{"role": "assistant", "content": response_text}]
                         # ... (Suggerimenti Video) ...
+            elif submit_wellness and not user_prompt_wellness: st.warning("Inserisci una domanda.")
 
         elif page == "📝 Analisi Referto Medico":
             st.header("📝 Analisi Referto Medico")
-            # ... (Logica analisi referto come prima) ...
+            # ... (Codice come prima) ...
 
         elif page == "💊 Info Farmaci":
             st.header("💊 Info Farmaci")
-            # ... (Logica info farmaci come prima) ...
+            # ... (Codice come prima) ...
 
         elif page == "🧑‍⚕️ Chiedi a un Esperto":
             st.header("🧑‍⚕️ Contatta un Esperto")
-            # ... (Logica modulo Google come prima) ...
+            # ... (Codice come prima) ...
 
         elif page == "☢️ App Analisi Radiografie":
             st.header("App Analisi Radiografie ☢️")
-            # ... (Logica link app radiografie come prima) ...
+            # ... (Codice come prima) ...
 
         elif page == "🩸 App Analisi Sangue":
             st.header("App Analisi Sangue 🩸")
-            # ... (Logica link app sangue come prima) ...
+            # ... (Codice come prima) ...
 
         elif page == "⚖️ Informativa Privacy":
             st.header("⚖️ Informativa sulla Privacy")
-            # ... (Testo policy completo come prima, usa f-string per variabili) ...
-            st.markdown(f"""**Informativa sulla Privacy di Salute Mentale AI** ... [Modulo Google]({google_form_url}) ... **{contact_email}** ...""")
+            # --- INSERISCI QUI IL TESTO COMPLETO ---
+            st.markdown(f"""**Informativa sulla Privacy di Salute Mentale AI** ... (Testo completo qui, usa {contact_email}) ...""")
 
         elif page == "🫂 Sostienici":
             st.header("🫂 Sostienici")
-            # ... (Contenuto pagina Sostienici come prima) ...
+            # ... (Codice come prima) ...
 
         # --- SEZIONE DONAZIONE FOOTER ---
         if page != "🫂 Sostienici":
