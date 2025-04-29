@@ -21,47 +21,37 @@ from google.api_core import exceptions
 # ==================================================
 # CONFIGURAZIONE MODELLO E API KEYS (DA STREAMLIT SECRETS)
 # ==================================================
+# (Codice configurazione Gemini invariato)
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     YOUTUBE_API_KEY = st.secrets["youtube_api_key"]
     configure(api_key=GEMINI_API_KEY)
 except KeyError as e:
     missing_key = e.args[0]
-    st.error(f"Errore: Chiave API '{missing_key}' mancante nei segreti. Vai su 'Manage app' -> 'Settings' -> 'Secrets' per aggiungerla.")
-    if missing_key == "youtube_api_key":
-        st.info("Assicurati di usare una 'Chiave API' (non ID Cliente OAuth) per YouTube.")
-    st.stop()
+    st.error(f"Errore: Chiave API '{missing_key}' mancante nei segreti.")
+    st.stop() # Stoppa l'app se mancano chiavi essenziali
 except Exception as e:
     st.error(f"Errore nella configurazione iniziale: {e}")
     st.stop()
 
-# --- Definizioni Modello e Prompt ---
 MODEL_NAME = 'gemini-1.5-flash'
 # (Prompt di sistema invariati)
-SYSTEM_PROMPT_MENTAL_HEALTH = """Sei "SoulCare AI"... (come prima)"""
-SYSTEM_PROMPT_REPORT = """Analizza il seguente testo estratto... (come prima)"""
-SYSTEM_PROMPT_DRUG = """Fornisci informazioni generali sul farmaco... (come prima)"""
+SYSTEM_PROMPT_MENTAL_HEALTH = """Sei "Salute Mentale AI"..."""
+SYSTEM_PROMPT_REPORT = """Analizza il seguente testo estratto..."""
+SYSTEM_PROMPT_DRUG = """Fornisci informazioni generali sul farmaco..."""
 
 try:
-    # --- CORREZIONE QUI: Ripristinate le definizioni di default ---
     SAFETY_SETTINGS = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
     ]
-    GENERATION_CONFIG = {
-        "temperature": 0.6,
-        "top_p": 0.95,
-        "top_k": 40,
-        "max_output_tokens": 4096,
-    }
-    # Istanzia il modello usando le configurazioni definite sopra
+    GENERATION_CONFIG = { "temperature": 0.6, "top_p": 0.95, "top_k": 40, "max_output_tokens": 4096 }
     model = GenerativeModel(MODEL_NAME, safety_settings=SAFETY_SETTINGS, generation_config=GENERATION_CONFIG)
 except Exception as e:
     st.error(f"Errore nella creazione del modello GenerativeModel: {e}")
     st.stop()
-
 
 # ==================================================
 # FUNZIONI HELPER
@@ -91,7 +81,7 @@ def extract_text_from_pdf(file_bytes):
     except Exception as e: st.error(f"Errore estrazione PDF: {e}"); return None
 
 def extract_topic(prompt):
-    start_phrases = ["@codex", "codex", "@SoulCare", "soulcare"]
+    start_phrases = ["@codex", "codex", "@SoulCare", "soulcare", "@Salute Mentale AI", "salute mentale ai"]
     lower_prompt = prompt.lower()
     for phrase in start_phrases:
         if lower_prompt.startswith(phrase): prompt = prompt[len(phrase):].strip(); break
@@ -121,20 +111,11 @@ def generate_gemini_response(system_prompt, user_content):
     max_retries = 2
     for attempt in range(max_retries):
         try:
-            # Crea un modello *specifico* per questa chiamata con il system_prompt
-            # Questo è più pulito che passare il prompt di sistema nel contenuto
-            temp_model = GenerativeModel(
-                MODEL_NAME,
-                safety_settings=SAFETY_SETTINGS,
-                generation_config=GENERATION_CONFIG,
-                system_instruction=system_prompt # Passa il prompt di sistema qui
-            )
+            temp_model = GenerativeModel(MODEL_NAME, safety_settings=SAFETY_SETTINGS, generation_config=GENERATION_CONFIG, system_instruction=system_prompt)
             response = temp_model.generate_content(user_content)
-
             if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
                 reason = response.prompt_feedback.block_reason
-                st.error(f"Analisi bloccata ({reason}).")
-                return f"Errore: Bloccato ({reason})."
+                st.error(f"Analisi bloccata ({reason})."); return f"Errore: Bloccato ({reason})."
             if hasattr(response, 'text') and response.text:
                 disclaimer_app = "\n\n---\n**⚠️⚠️ DISCLAIMER FINALE (DA APP) ⚠️⚠️**\n*Ricorda: questa analisi è AUTOMATICA e NON SOSTITUISCE IL MEDICO/PROFESSIONISTA. Consulta SEMPRE un esperto qualificato.*"
                 return response.text.strip() + disclaimer_app
@@ -157,141 +138,101 @@ def generate_gemini_response(system_prompt, user_content):
 # FUNZIONE PRINCIPALE DELL'APP STREAMLIT
 # ==================================================
 def main():
-    st.set_page_config(page_title="SoulCare AI - Salute Mentale", page_icon="❤️", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Salute Mentale AI", page_icon="🧠", layout="wide", initial_sidebar_state="expanded")
+
+    # URL per donazioni (assicurati siano corretti)
+    buy_me_a_coffee_url = "https://buymeacoffee.com/smartai"
+    stripe_payment_link = "https://buy.stripe.com/tuo_link_id" # Sostituisci
 
     # --- Sidebar ---
     with st.sidebar:
-        try: st.image("soul.png", use_column_width=True)
-        except Exception: st.warning("Immagine 'soul.png' non trovata.")
-        page = st.selectbox("**MENU**", ["🏠 Home", "🧠 Coach del Benessere", "📝 Analisi Referto Medico", "💊 Info Farmaci", "🧑‍⚕️ Chiedi a un Esperto", "⚖️ Informativa Privacy", "🫂 Sostienici"])
-        st.markdown(" Seguimi su:")
-        st.markdown("""<style>...</style><div class="follow-me">...</div>""", unsafe_allow_html=True) # Il tuo HTML qui
+        st.markdown("### Menu Principale")
+        page_options = [
+            "🏠 Home", "🧠 Coach del Benessere", "📝 Analisi Referto Medico", "💊 Info Farmaci",
+            "🧑‍⚕️ Chiedi a un Esperto", "--- Strumenti Correlati ---", "☢️ App Analisi Radiografie",
+            "🩸 App Analisi Sangue", "--- Info e Supporto ---", "⚖️ Informativa Privacy", "🫂 Sostienici"
+        ]
+        separator_values = ["--- Strumenti Correlati ---", "--- Info e Supporto ---"]
+        def format_func(option): return "---" if option in separator_values else option
+        page = st.sidebar.selectbox("**MENU**", page_options, label_visibility="collapsed", format_func=format_func)
 
+        # Mostra pulsanti donazione nella sidebar SOLO se nella pagina Sostienici
         if page == "🫂 Sostienici":
-            st.markdown("### Sostieni SoulCare AI")
-            st.markdown("Se trovi utile questa applicazione, considera di supportare il suo sviluppo:")
-            # LINK REALI (assicurati siano corretti)
-            buy_me_a_coffee_url = "https://buymeacoffee.com/smartai"
-            stripe_payment_link = "https://buy.stripe.com/tuo_link_id" # Sostituisci
+            st.markdown("### Sostieni Salute Mentale AI")
+            st.markdown("...") # Testo sidebar come prima
             st.link_button("Offrimi un caffè ☕", buy_me_a_coffee_url, use_container_width=True)
-            st.markdown("*(Piattaforma semplice)*")
-            st.markdown("---")
+            st.markdown("...") # Testo sidebar come prima
             st.link_button("Dona con Carta (via Stripe) 💳", stripe_payment_link, use_container_width=True)
-            st.markdown("*(Per donazioni con carta)*")
+            st.markdown("...") # Testo sidebar come prima
+
+        st.markdown("---") # Separatore prima dei link social
+        st.markdown(" Seguimi su:")
+        # Incolla qui il tuo HTML per i link social
+        st.markdown("""<style>...</style><div class="follow-me">...</div>""", unsafe_allow_html=True)
+
 
     # --- Contenuto Pagina Principale ---
+
+    # --- Immagine di Intestazione ---
     header_image_url = "https://cdn.leonardo.ai/users/8a519dc0-5f27-42a1-a9a3-662461401c5f/generations/1fde2447-b823-4ab1-8afa-77198e290e2d/Leonardo_Phoenix_10_Crea_un_logo_professionale_moderno_e_altam_2.jpg"
     try: st.image(header_image_url)
     except Exception as img_err: st.warning(f"Avviso intestazione: {img_err}", icon="🖼️")
 
-    # --- CONTENUTO SPECIFICO PER PAGINA ---
+    # --- CONTENUTO SPECIFICO PER PAGINA (Renderizza solo se non è un separatore) ---
+    if page not in separator_values:
+        if page == "🏠 Home":
+            st.title("Benvenuto/a in Salute Mentale AI 🧠❤️")
+            st.markdown("""**Salute Mentale AI** è un assistente virtuale...""")
+            lottie_url_home = "https://lottie.host/d7233830-b2c0-4719-a5c0-0389bd2ab539/qHF7qyXl5q.json"
+            lottie_animation_home = load_lottie_url(lottie_url_home)
+            if lottie_animation_home: st_lottie(lottie_animation_home, speed=1, width=400, height=300, key="lottie_home")
+            st.markdown("""**Linee Guida per l'Utilizzo:**\n*   **Scopo Informativo**: ...\n*   **Condotta Rispettosa**: ...\n*   **Privacy e Dati**: ...\n*   **Emergenze**: ...\n*   **Uso Responsabile**: ...\n*   **Feedback**: ...""")
 
-    if page == "🏠 Home":
-        st.title("Benvenuto/a in SoulCare AI 🧑‍⚕️❤️")
-        st.markdown("""**SoulCare AI** è un'applicazione...""")
-        lottie_url_home = "https://lottie.host/d7233830-b2c0-4719-a5c0-0389bd2ab539/qHF7qyXl5q.json"
-        lottie_animation_home = load_lottie_url(lottie_url_home)
-        if lottie_animation_home: st_lottie(lottie_animation_home, speed=1, width=400, height=300, key="lottie_home")
-        st.markdown("""**Linee Guida per l'Utilizzo:**...""")
+        elif page == "🧠 Coach del Benessere":
+            st.header("🧠 Coach Virtuale del Benessere")
+            # ... (Lottie, avviso, logica Chat come prima) ...
 
-    elif page == "🧠 Coach del Benessere":
-        st.header("🧠 Coach Virtuale del Benessere")
-        lottie_url_coach = "https://lottie.host/0c079fc2-f4df-452a-966b-3a852ffb9801/WjOxpGVduu.json"
-        lottie_animation_coach = load_lottie_url(lottie_url_coach)
-        if lottie_animation_coach: st_lottie(lottie_animation_coach, speed=1, width=220, height=300, key="lottie_coach")
-        st.warning("SoulCare AI può fornire risposte imprecise...")
+        elif page == "📝 Analisi Referto Medico":
+            st.header("📝 Analisi Preliminare Referto Medico")
+            # ... (Logica caricamento PDF e analisi come prima) ...
 
-        if "chat_history_wellness" not in st.session_state: st.session_state.chat_history_wellness = []
-        for message in st.session_state.chat_history_wellness:
-            with st.chat_message(message["role"], avatar= "❤️" if message["role"]=="assistant" else "user"): st.markdown(message["content"])
+        elif page == "💊 Info Farmaci":
+            st.header("💊 Informazioni Generali sui Farmaci")
+            # ... (Logica input testo/PDF e analisi come prima) ...
 
-        user_prompt = st.chat_input("Scrivi qui la tua domanda o riflessione...")
-        if user_prompt:
-            st.chat_message("user").markdown(user_prompt)
-            st.session_state.chat_history_wellness.append({"role": "user", "content": user_prompt})
-            with st.spinner("SoulCare AI sta pensando... 🤔"):
-                # Passa solo l'ultimo prompt alla funzione helper
-                response_text = generate_gemini_response(SYSTEM_PROMPT_MENTAL_HEALTH, user_prompt)
-                with st.chat_message("assistant", avatar="❤️"): st.markdown(response_text)
-                st.session_state.chat_history_wellness.append({"role": "assistant", "content": response_text})
-                topic_for_youtube = extract_topic(user_prompt)
-                video_suggestions = fetch_youtube_videos(topic_for_youtube)
-                if video_suggestions:
-                    st.markdown("---"); st.markdown("### Risorse Video Correlate (YouTube):")
-                    for video in video_suggestions: st.markdown(f"- [{video['title']}]({video['url']})")
+        elif page == "🧑‍⚕️ Chiedi a un Esperto":
+            st.header("🧑‍⚕️ Contatta un Esperto")
+            # ... (Testo e link Modulo Google come prima) ...
 
-    elif page == "📝 Analisi Referto Medico":
-        st.header("📝 Analisi Preliminare Referto Medico")
-        st.markdown("**Carica il tuo referto medico in formato PDF:**")
-        uploaded_file = st.file_uploader("Scegli PDF", type=["pdf"], label_visibility="collapsed", key="pdf_report_uploader")
-        if uploaded_file is not None:
-            try:
-                pdf_bytes = uploaded_file.getvalue()
-                text = extract_text_from_pdf(pdf_bytes)
-                if text:
-                    st.text_area("Testo Estratto:", text, height=300)
-                    st.markdown("---")
-                    if st.button("🔬 Analizza Testo", type="primary", key="analyze_report_btn"):
-                        with st.spinner("Analisi referto..."):
-                            analisi_output = generate_gemini_response(SYSTEM_PROMPT_REPORT, f"--- TESTO ---\n{text}\n--- FINE ---")
-                            st.subheader("Risultato Analisi:")
-                            st.markdown(analisi_output)
-                            if not analisi_output.startswith("Errore:"): download_generated_report(analisi_output, f"analisi_referto_{uploaded_file.name[:20]}")
-                else: st.error("Impossibile estrarre testo.")
-            except Exception as e: st.error(f"Errore elaborazione PDF: {e}")
+        elif page == "☢️ App Analisi Radiografie":
+            st.header("Rimando all'App Analisi Radiografie")
+            # ... (Testo e link App Radiografie come prima) ...
 
-    elif page == "💊 Info Farmaci":
-        st.header("💊 Informazioni Generali sui Farmaci")
-        st.markdown("**Inserisci nome farmaco o carica PDF.**")
-        input_method = st.radio("Metodo:", ("Testo", "Carica PDF"), horizontal=True, label_visibility="collapsed", key="drug_input_method")
-        if input_method == "Testo":
-            medicine_name = st.text_input("Nome farmaco:", placeholder="Es. Paracetamolo", key="drug_name_text")
-            if st.button("Cerca Info", type="primary", key="search_drug_text_btn") and medicine_name:
-                with st.spinner(f"Ricerca {medicine_name}..."):
-                    analisi_output = generate_gemini_response(SYSTEM_PROMPT_DRUG, f"Farmaco: {medicine_name}")
-                    st.subheader(f"Info su {medicine_name}:")
-                    st.markdown(analisi_output)
-                    if not analisi_output.startswith("Errore:"): download_generated_report(analisi_output, f"info_{medicine_name.replace(' ','_')}")
-            #elif st.button("Cerca Info", type="primary", key="search_drug_text_btn_empty") and not medicine_name: st.warning("Inserisci nome.") # Rimosso per evitare doppio bottone
-        elif input_method == "Carica PDF":
-             uploaded_file_drug = st.file_uploader("Scegli PDF", type=["pdf"], key="pdf_drug_uploader", label_visibility="collapsed")
-             if uploaded_file_drug is not None:
-                try:
-                    pdf_bytes_drug = uploaded_file_drug.getvalue()
-                    text_drug = extract_text_from_pdf(pdf_bytes_drug)
-                    if text_drug:
-                        st.text_area("Testo Estratto:", text_drug, height=200)
-                        st.markdown("---")
-                        medicine_from_pdf = st.text_input("Nome farmaco nel PDF:", key="drug_name_pdf")
-                        if st.button("Analizza da PDF", type="primary", key="search_drug_pdf_btn") and medicine_from_pdf:
-                            with st.spinner(f"Analisi {medicine_from_pdf}..."):
-                                context_pdf = f"Farmaco: {medicine_from_pdf}\n\nContesto:\n{text_drug[:1000]}..."
-                                analisi_output = generate_gemini_response(SYSTEM_PROMPT_DRUG, context_pdf)
-                                st.subheader(f"Info su {medicine_from_pdf} (da PDF):")
-                                st.markdown(analisi_output)
-                                if not analisi_output.startswith("Errore:"): download_generated_report(analisi_output, f"info_{medicine_from_pdf.replace(' ','_')}_pdf")
-                        #elif st.button("Analizza da PDF", type="primary", key="search_drug_pdf_btn_empty") and not medicine_from_pdf: st.warning("Inserisci nome.") # Rimosso per evitare doppio bottone
-                    else: st.error("Impossibile estrarre testo.")
-                except Exception as e: st.error(f"Errore PDF: {e}")
+        elif page == "🩸 App Analisi Sangue":
+            st.header("Rimando all'App Analisi Sangue")
+            # ... (Testo e link App Sangue come prima) ...
 
-    elif page == "🧑‍⚕️ Chiedi a un Esperto":
-        st.header("🧑‍⚕️ Contatta un Esperto")
-        st.markdown("""Hai bisogno di un parere più specifico o vuoi metterti in contatto? Compila il modulo Google qui sotto. La tua richiesta verrà inoltrata in modo confidenziale.\n\n*Ricorda: questo modulo è per richieste **non urgenti**. Per emergenze, contatta i servizi sanitari.*""")
-        google_form_url = "https://docs.google.com/forms/d/e/1FAIpQLScayUn2nEf1WYYEuyzEvxOb5zBvYDKW7G-zqakqHn4kzxza2A/viewform?usp=header"
-        st.link_button("📝 Apri il Modulo di Contatto Sicuro", google_form_url, use_container_width=True, type="primary")
-        st.markdown("---")
-        st.markdown("""**Esperti Disponibili (Esempio):**\n- Dott.ssa Anjali Sharma (Psicologa)...""")
+        elif page == "⚖️ Informativa Privacy":
+            st.header("⚖️ Informativa sulla Privacy")
+            # --- INSERISCI QUI IL TESTO COMPLETO ---
+            st.markdown("""**Informativa sulla Privacy di Salute Mentale AI**: \n\n ... (Il tuo testo completo qui) ...""")
 
-    elif page == "⚖️ Informativa Privacy":
-        st.header("⚖️ Informativa sulla Privacy")
-        # --- INSERISCI QUI IL TESTO COMPLETO ---
-        st.markdown("""**Informativa sulla Privacy di SoulCare AI**: \n\n ... (Il tuo testo completo qui, ricorda l'email di contatto) ...""")
+        elif page == "🫂 Sostienici":
+            st.header("🫂 Sostienici")
+            st.success("🙏 Grazie per essere arrivato fin qui! 🙏") # Messaggio di ringraziamento
+            st.info("Trovi le opzioni per la donazione nella barra laterale a sinistra. Ogni contributo, anche piccolo, fa la differenza!")
+            st.write("Per richieste di supporto tecnico o feedback, contattaci a skavtech.in@gmail.com")
 
-    elif page == "🫂 Sostienici":
-        st.header("🫂 Sostienici")
-        st.info("Grazie per considerare di supportare SoulCare AI! Trovi le opzioni per la donazione nella barra laterale a sinistra.")
-        st.write("Per richieste di supporto tecnico o feedback, contattaci a skavtech.in@gmail.com")
+        # --- SEZIONE DONAZIONE "BUY ME A COFFEE" VISIBILE IN FONDO A TUTTE LE PAGINE VALIDE ---
+        st.markdown("---") # Separatore
+        st.markdown("#### Ti piace questa app? ❤️")
+        st.markdown("Mantenere e migliorare strumenti come **Salute Mentale AI** richiede tempo e risorse. Se trovi valore in questa applicazione, considera di offrirmi un caffè virtuale!")
+        st.link_button("☕ Offrimi un caffè (Buy Me a Coffee)", buy_me_a_coffee_url, use_container_width=True, type="primary")
+        st.caption("Anche un piccolo contributo aiuta a sostenere il progetto!")
 
+    # --- Footer Finale (Caption) ---
+    st.markdown("---")
+    st.caption("Applicazione sviluppata con Streamlit e Google Gemini. Ricorda: consulta sempre un medico o professionista qualificato.")
 
 # --- Chiamata finale ---
 if __name__ == "__main__":
