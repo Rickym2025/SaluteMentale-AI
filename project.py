@@ -116,32 +116,46 @@ model = genai.GenerativeModel(
 # ==================================================
 
 def generate_gemini_response(system_prompt, user_content):
-    """Chiama l'API Gemini con il prompt di sistema specifico."""
+    """Chiama l'API Gemini con gestione errori avanzata per debug."""
     max_retries = 2
+    last_error = "Nessun dettaglio disponibile."
     
     # Combina prompt di sistema e input utente
     full_prompt = f"{system_prompt}\n\n---\nRICHIESTA UTENTE:\n{user_content}"
     
     for attempt in range(max_retries):
         try:
-            response = model.generate_content(full_prompt)
+            # Configurazione esplicita per ogni chiamata per evitare conflitti
+            model_instance = genai.GenerativeModel(
+                model_name=MODEL_NAME,
+                safety_settings=SAFETY_SETTINGS,
+                generation_config=GENERATION_CONFIG
+            )
+            
+            response = model_instance.generate_content(full_prompt)
             
             if hasattr(response, 'text') and response.text:
                 return response.text.strip()
             
             elif hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
-                return f"⚠️ Risposta bloccata per motivi di sicurezza: {response.prompt_feedback.block_reason}"
+                return f"⚠️ Blocco Sicurezza: {response.prompt_feedback.block_reason}"
             
             time.sleep(1)
         
         except exceptions.GoogleAPIError as e:
-            if "quota" in str(e).lower():
-                return "❌ Errore: Quota API giornaliera superata."
-            time.sleep(2)
-        except Exception as e:
-            return f"❌ Errore imprevisto: {str(e)}"
+            last_error = str(e)
+            if "quota" in last_error.lower() or "429" in last_error:
+                return f"❌ Errore Quota: Hai superato il limite di richieste gratuite per oggi (Error 429). Riprova domani o usa una nuova API Key."
+            if "key" in last_error.lower() or "400" in last_error:
+                 return f"❌ Errore Chiave: La API Key sembra non valida. Controlla i Secrets. ({last_error})"
+            time.sleep(1)
             
-    return "❌ Il servizio non risponde al momento. Riprova più tardi."
+        except Exception as e:
+            last_error = str(e)
+            time.sleep(1)
+            
+    # Se arriviamo qui, restituiamo l'errore esatto per capire il problema
+    return f"❌ Errore Tecnico Gemini: {last_error}"
 
 def download_generated_report(content, filename):
     """Crea un link per scaricare il report."""
@@ -415,3 +429,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
